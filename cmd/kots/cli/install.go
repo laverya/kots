@@ -42,8 +42,10 @@ func InstallCmd() *cobra.Command {
 				os.Exit(1)
 			}
 
-			fmt.Print(cursor.Hide())
-			defer fmt.Print(cursor.Show())
+			if !v.GetBool("yaml") {
+				fmt.Print(cursor.Hide())
+				defer fmt.Print(cursor.Show())
+			}
 
 			log := logger.NewLogger()
 

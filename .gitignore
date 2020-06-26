@@ -20,3 +20,8 @@ scope-go-*.log
 
 # goreleaser
 dist/
+
+
+# bundle builder
+dist_bundle
+*.tar.gz
