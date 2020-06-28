@@ -1,21 +1,22 @@
 #!/bin/sh
+# EXPERIMENTAL / ALPHA
 
 set -e
 
 
 KOTS_REGISTRY_URL=$1
-KOTS_REGISTRY_USERNAME=$2
-KOTS_REGISTRY_PASSWORD=$3 KOTS_REGISTRY_NAMESPACE=$4
-KOTS_APP_SLUG=$5
-KOTS_NAMESPACE=$6
+KOTS_NAMESPACE=$2
+KOTS_IMAGE_PULL_SECRET_NAME=$3
+
+KOTS_REGISTRY_USERNAME=$4
+KOTS_REGISTRY_PASSWORD=$5
+KOTS_REGISTRY_NAMESPACE=$6
 
 
 validate() {
   if [ -z "${KOTS_REGISTRY_URL}" ]; then usage "missing registry URL"; exit 1; fi
-  if [ -z "${KOTS_REGISTRY_USERNAME}" ]; then usage "missing registry username"; exit 1; fi
-  if [ -z "${KOTS_REGISTRY_PASSWORD}" ]; then usage "missing registry password"; exit 1; fi
-  if [ -z "${KOTS_APP_SLUG}" ]; then usage "missing app slug"; exit 1; fi
   if [ -z "${KOTS_NAMESPACE}" ]; then usage "missing namespace"; exit 1; fi
+  if [ -z "${KOTS_IMAGE_PULL_SECRET_NAME}" ]; then usage "missing image pull secret name"; exit 1; fi
 }
 
 log() {
@@ -48,39 +49,74 @@ install.sh: load a kotsadm bundle
 Positional Arguments
 
 KOTS_REGISTRY_URL -- the url to a registry to use
-KOTS_REGISTRY_USERNAME -- username to push images
-KOTS_REGISTRY_PASSWORD -- password to push images
-KOTS_REGISTRY_NAMESPACE -- optional, a slash-prefixed registry namespace, e.g. "/app-images"
+KOTS_NAMESPACE -- the name of an existing namespace to deploy into
+KOTS_IMAGE_PULL_SECRET_NAME -- the name of an existing image pull secret to use for pulling from the private registry
 
-APP_SLUG -- The app slug to deploy
-KOTS_NAMESPACE -- The Namespace to deploy
-KOTS_IMAGE_PULL_SECRET_NAME=$6
+Optional Arguments:
+
+KOTS_REGISTRY_USERNAME -- optional, username to push images. Leave blank if this workstation already had `docker push access`
+KOTS_REGISTRY_PASSWORD -- optional, password to push images. Leave blank if this workstation already had `docker push access`
+KOTS_REGISTRY_NAMESPACE -- optional, a slash-prefixed registry namespace, e.g. "/app-images"
 
 EOF
 }
 
 make_kustomization() {
+  cat <<EOF >./yaml/regcred.json
+[
+  { "op": "add",
+    "path": "/spec/template/spec/imagePullSecrets",
+    "value": [{ "name": "${KOTS_IMAGE_PULL_SECRET_NAME}"}]
+  }
+]
+EOF
+
+  cat <<EOF >./yaml/regcred-pod.json
+[
+  { "op": "add",
+    "path": "/spec/imagePullSecrets",
+    "value": [{ "name": "${KOTS_IMAGE_PULL_SECRET_NAME}"}]
+  }
+]
+EOF
+
   cat <<EOF >./yaml/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: ${KOTS_NAMESPACE}
 resources:
 - ./kotsadm.yaml
-patches:
-    -   target:
-            kind: Deployment
-        patch: |-
-            - op: add
-              path: /spec/template/spec/imagePullSecrets
-              value:
-                name: registry-creds
-    -   target:
-            kind: StatefulSet
-        patch: |-
-            - op: replace
-              path: /spec/template/spec/imagePullSecrets
-              value:
-                - name: registry-creds
+patchesJson6902:
+#  - path: ./regcred.json
+#    target:
+#      group: apps
+#      version: v1
+#      kind: Deployment
+#      name: kotsadm
+  - path: ./regcred.json
+    target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: kotsadm-api
+#  - path: ./regcred.json
+#    target:
+#      group: apps
+#      version: v1
+#      kind: Deployment
+#      name: kotsadm-operator
+#  - path: ./regcred.json
+#    target:
+#      group: apps
+#      version: v1
+#      kind: StatefulSet
+#      name: kotsadm-minio
+#  - path: ./regcred-pod.json
+#    target:
+#      group: core
+#      version: v1
+#      kind: Pod
+#      name: kotsadm-migrations-*
 images:
 EOF
 
@@ -90,13 +126,40 @@ EOF
 preflight() {
   log "Checking for prerequisites: namespace exists, with image pull secret, and registry push credentials are valid"
   if ! kubectl get namespace ${KOTS_NAMESPACE} >/dev/null; then
-    echo "namespace ${KOTS_NAMESPACE} not found, please provide the name of an existing namespace"
+    echo "FAIL: namespace ${KOTS_NAMESPACE} not found, please provide the name of an existing namespace"
     exit 1
   fi
-  if ! docker login --username ${KOTS_REGISTRY_USERNAME} --password ${KOTS_REGISTRY_PASSWORD} ${KOTS_REGISTRY_URL}; then
-    echo "registry creds for ${KOTS_REGISTRY_URL} failed 'docker login', please very credentials have 'docker push' access"
+  echo "SUCCESS: namespace \"${KOTS_NAMESPACE}\" exists"
+
+  if ! kubectl get secret -n ${KOTS_NAMESPACE} ${KOTS_IMAGE_PULL_SECRET_NAME} >/dev/null; then
+    echo "FAIL: namespace ${KOTS_NAMESPACE} not found, please provide the name of an existing namespace"
     exit 1
   fi
+  echo "SUCCESS: secret \"${KOTS_IMAGE_PULL_SECRET_NAME}\" exists"
+
+  if [ ! -z "${KOTS_REGISTRY_USERNAME}${KOTS_REGISTRY_PASSWORD}" ]; then
+    if ! docker login --username ${KOTS_REGISTRY_USERNAME} --password ${KOTS_REGISTRY_PASSWORD} ${KOTS_REGISTRY_URL}; then
+      echo "FAIL: registry creds for ${KOTS_REGISTRY_URL} failed 'docker login', please very credentials have 'docker push' access"
+      exit 1
+    fi
+    echo "SUCCESS: push credentials valid"
+  else
+    echo "SUCCESS: no push credentials provided, skipping docker login."
+  fi
+
+  if kubectl get deploy -n ${KOTS_NAMESPACE} kotsadm-api 2>&1 >/dev/null; then
+    printf "FAIL: Deployment kotsadm-api already found in namespace, please ensure namespace is empty before installing. "
+    printf "Because many objects like services and secrets will have been created by a previous deployment, you should "
+    printf "proceed to delete the entire namespace and recreate it before trying again\n"
+    echo
+    echo "    kubectl delete namespace ${KOTS_NAMESPACE}"
+    echo "    kubectl create namespace ${KOTS_NAMESPACE}"
+    echo "    kubectl -n ${KOTS_NAMESPACE} create secret docker-registry registry-creds --docker-server=... --docker-username=... --docker-password=... --docker-email=a@b.c"
+    echo
+
+    exit 1
+  fi
+  echo "SUCCESS: namespace \"${KOTS_NAMESPACE}\" does not contain any existing KOTS resources"
 
 }
 
@@ -109,43 +172,35 @@ load_images() {
 
 tag_and_push_images() {
   log "tagging and pushing"
-  docker login --username ${KOTS_REGISTRY_USERNAME} --password ${KOTS_REGISTRY_PASSWORD} ${KOTS_REGISTRY_URL}
   for image in `cat yaml/kotsadm.yaml | grep 'image: ' | cut -d':' -f 2,3 | cut -d ' ' -f2 | sort | uniq `; do
     if contains "${image}" "postgres"; then
-        subPart=${image}
+        imageSuffixWithTag=${image}
         rewritePrefix=""
     else
-        subPart=`echo ${image} | cut -d'/' -f 2`
+        imageSuffixWithTag=`echo ${image} | cut -d'/' -f 2`
         rewritePrefix="kotsadm/"
     fi
 
-    newName=${KOTS_REGISTRY_URL}${KOTS_REGISTRY_NAMESPACE}/${subPart}
+    newName=${KOTS_REGISTRY_URL}${KOTS_REGISTRY_NAMESPACE}/${imageSuffixWithTag}
     docker tag ${image} ${newName}
     docker push ${newName}
 
     echo adding kustomization snippet for ${image}
     echo
-    subPartWithoutTag=`echo ${subPart} | cut -d':' -f 1`
-    subPartTag=`echo ${subPart} | cut -d':' -f 2`
+    imageSuffixWithoutTag=`echo ${imageSuffixWithTag} | cut -d':' -f 1`
+    imageTag=`echo ${imageSuffixWithTag} | cut -d':' -f 2`
 
-    echo adding kustomization snippet for ${image}: ${subPartWithoutTag} ${subPartTag}
+    echo adding kustomization snippet for ${image}: ${imageSuffixWithoutTag} ${imageTag}
     echo
 
     cat <<EOF >> ./yaml/kustomization.yaml
-- name: ${rewritePrefix}${subPartWithoutTag}
-  newName: ${KOTS_REGISTRY_URL}${KOTS_REGISTRY_NAMESPACE}/${subPartWithoutTag}
-  newTag: "${subPartTag}"
+- name: ${rewritePrefix}${imageSuffixWithoutTag}
+  newName: ${KOTS_REGISTRY_URL}${KOTS_REGISTRY_NAMESPACE}/${imageSuffixWithoutTag}
+  newTag: "${imageTag}"
 EOF
   done
 }
 
-# EXPERIMENTAL / ALPHA
-  ## retag & push images, w/ CLI args
-  ## unpack kotsadm yaml
-  ## create kustomize patch so kotsadm images get pulled from internal registry
-  ## create kustomize patch for app name / slug
-  ## create kustomize patch for airgap?
-  ## kubectl apply
 main() {
 
   validate
@@ -157,7 +212,13 @@ main() {
 
 
   log deploying
-  kubectl create secret docker-registry -n ${KOTS_NAMESPACE} registry-creds --docker-server=index.docker.io --docker-username=${KOTS_REGISTRY_USERNAME} --docker-password=${KOTS_REGISTRY_PASSWORD} --docker-email=@
+  echo "manifests have been written to ./yaml -- you can press ENTER to deploy them, or Ctrl+C to exit this script. You can deploy them later with"
+  echo
+  echo   "    kubectl apply -k ./yaml"
+  echo
+  echo -n "would you like to deploy? [ENTER] "
+  read continue
+
   kubectl apply -k ./yaml
 }
 

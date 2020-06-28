@@ -249,84 +249,84 @@ func kotsadmDeployment(deployOptions types.DeployOptions) *appsv1.Deployment {
 					},
 					ServiceAccountName: "kotsadm",
 					RestartPolicy:      corev1.RestartPolicyAlways,
-					InitContainers: []corev1.Container{
-						{
-							Image:           fmt.Sprintf("%s/kotsadm:%s", kotsadmRegistry(), kotsadmTag()),
-							ImagePullPolicy: corev1.PullAlways,
-							Name:            "restore-db",
-							Command: []string{
-								"/restore-db.sh",
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "backup",
-									MountPath: "/backup",
-								},
-							},
-							Env: []corev1.EnvVar{
-								{
-									Name: "POSTGRES_PASSWORD",
-									ValueFrom: &corev1.EnvVarSource{
-										SecretKeyRef: &corev1.SecretKeySelector{
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: "kotsadm-postgres",
-											},
-											Key: "password",
-										},
-									},
-								},
-							},
-						},
-						{
-							Image:           fmt.Sprintf("%s/kotsadm:%s", kotsadmRegistry(), kotsadmTag()),
-							ImagePullPolicy: corev1.PullAlways,
-							Name:            "restore-s3",
-							Command: []string{
-								"/restore-s3.sh",
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "backup",
-									MountPath: "/backup",
-								},
-							},
-							Env: []corev1.EnvVar{
-								{
-									Name:  "S3_ENDPOINT",
-									Value: "http://kotsadm-minio:9000",
-								},
-								{
-									Name:  "S3_BUCKET_NAME",
-									Value: "kotsadm",
-								},
-								{
-									Name: "S3_ACCESS_KEY_ID",
-									ValueFrom: &corev1.EnvVarSource{
-										SecretKeyRef: &corev1.SecretKeySelector{
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: "kotsadm-minio",
-											},
-											Key: "accesskey",
-										},
-									},
-								},
-								{
-									Name: "S3_SECRET_ACCESS_KEY",
-									ValueFrom: &corev1.EnvVarSource{
-										SecretKeyRef: &corev1.SecretKeySelector{
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: "kotsadm-minio",
-											},
-											Key: "secretkey",
-										},
-									},
-								},
-								{
-									Name:  "S3_BUCKET_ENDPOINT",
-									Value: "true",
-								},
-							},
-						},
+					InitContainers:     []corev1.Container{
+						//{
+						//	Image:           fmt.Sprintf("%s/kotsadm:%s", kotsadmRegistry(), kotsadmTag()),
+						//	ImagePullPolicy: corev1.PullAlways,
+						//	Name:            "restore-db",
+						//	Command: []string{
+						//		"/restore-db.sh",
+						//	},
+						//	VolumeMounts: []corev1.VolumeMount{
+						//		{
+						//			Name:      "backup",
+						//			MountPath: "/backup",
+						//		},
+						//	},
+						//	Env: []corev1.EnvVar{
+						//		{
+						//			Name: "POSTGRES_PASSWORD",
+						//			ValueFrom: &corev1.EnvVarSource{
+						//				SecretKeyRef: &corev1.SecretKeySelector{
+						//					LocalObjectReference: corev1.LocalObjectReference{
+						//						Name: "kotsadm-postgres",
+						//					},
+						//					Key: "password",
+						//				},
+						//			},
+						//		},
+						//	},
+						//},
+						//{
+						//	Image:           fmt.Sprintf("%s/kotsadm:%s", kotsadmRegistry(), kotsadmTag()),
+						//	ImagePullPolicy: corev1.PullAlways,
+						//	Name:            "restore-s3",
+						//	Command: []string{
+						//		"/restore-s3.sh",
+						//	},
+						//	VolumeMounts: []corev1.VolumeMount{
+						//		{
+						//			Name:      "backup",
+						//			MountPath: "/backup",
+						//		},
+						//	},
+						//	Env: []corev1.EnvVar{
+						//		{
+						//			Name:  "S3_ENDPOINT",
+						//			Value: "http://kotsadm-minio:9000",
+						//		},
+						//		{
+						//			Name:  "S3_BUCKET_NAME",
+						//			Value: "kotsadm",
+						//		},
+						//		{
+						//			Name: "S3_ACCESS_KEY_ID",
+						//			ValueFrom: &corev1.EnvVarSource{
+						//				SecretKeyRef: &corev1.SecretKeySelector{
+						//					LocalObjectReference: corev1.LocalObjectReference{
+						//						Name: "kotsadm-minio",
+						//					},
+						//					Key: "accesskey",
+						//				},
+						//			},
+						//		},
+						//		{
+						//			Name: "S3_SECRET_ACCESS_KEY",
+						//			ValueFrom: &corev1.EnvVarSource{
+						//				SecretKeyRef: &corev1.SecretKeySelector{
+						//					LocalObjectReference: corev1.LocalObjectReference{
+						//						Name: "kotsadm-minio",
+						//					},
+						//					Key: "secretkey",
+						//				},
+						//			},
+						//		},
+						//		{
+						//			Name:  "S3_BUCKET_ENDPOINT",
+						//			Value: "true",
+						//		},
+						//	},
+						//},
 					},
 					Containers: []corev1.Container{
 						{
