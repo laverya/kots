@@ -143,6 +143,25 @@ Let's invoke this with our set variables (I'm leaving namespace blank in this ca
 sudo -E ./install.sh "${DOCKER_REGISTRY}" "${NAMESPACE}" "registry-creds" "${DOCKER_USERNAME}" "${DOCKER_PASSWORD}" ""
 ```
 
+next, we need to expose the admin console. If we're running kubectl from a workstation with a browser, we can run 
+
+```text
+./kots admin-console -n "${NAMESPACE}"
+```
+
+Since I'm running this from a Jump box, I'm going to create a NodePort, but other options like creating an Ingress will let us configure TLS, etc. For an Ingress the service name should be `kotsadm` and it can be deployed out-of-band, either before or after the full install.
+
+```text
+kubectl -n "${NAMESPACE}" edit svc kotsadm
+```
+
+
+
+next, we need a password for our kotsadm instance -- let's reset it with
+
+```text
+./kots reset-password -n "${NAMESPACE}"
+```
 
 ### note
 

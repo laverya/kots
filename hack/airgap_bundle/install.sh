@@ -107,6 +107,7 @@ make_kustomization() {
   log "preparing kustomization"
 
   AUTO_CREATE_CLUSTER_TOKEN=$(< /dev/urandom tr -dc A-Za-z0-9 | head -c16)
+  MIGRATIONS_POD_NAME=$(cat yaml/kotsadm.yaml | grep 'name: kotsadm-migrations' | head -n 1 | cut -d' ' -f 4)
 
   cat <<EOF >./yaml/cluster-token.yaml
 apiVersion: v1
@@ -193,10 +194,9 @@ patchesJson6902:
       name: kotsadm-minio
   - path: ./regcred-pod.json
     target:
-      group: core
       version: v1
       kind: Pod
-      name: kotsadm-migrations-*
+      name: ${MIGRATIONS_POD_NAME}
 images:
 EOF
 
