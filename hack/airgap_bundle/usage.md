@@ -1,77 +1,4 @@
 
-
-### building a full bundle
-
-./hack/airagp_bundle/build_kots_bundle.sh
-
-
-### airgapped kubernetes cluster
-
-create a GCP vm with `--no-address`, this will be our airgapped instance
-
-
-```shell
-INSTANCE=dex-airgap-1; gcloud compute instances create $INSTANCE --boot-disk-size=200GB --image-project ubuntu-os-cloud --image-family ubuntu-1804-lts --machine-type n1-standard-4 --no-address
-```
-
-create a jump box with a public IP and SSH it
-
-
-```
-export INSTANCE=dex-airgap-jump
-gcloud compute instances create $INSTANCE --boot-disk-size=200GB --image-project ubuntu-os-cloud --image-family ubuntu-1804-lts --machine-type n1-standard-1
-until gcloud compute ssh --ssh-flag=-A $INSTANCE; do sleep 1; done
-```
-
-
-On the jump box, download a kURL installer bundle without KOTS (details here: https://kurl.sh/47f35bd )
-
-```
-curl -LO https://kurl.sh/bundle/47f35bd.tar.gz
-```
-
-From the jump box, SCP the kURL bundle to the airgapped node, then ssh over to it and run the script
-
-```
-scp 47f35bd.tar.gz dex-airgap-1:
-ssh dex-airgap-1
-tar xvf 47f35bd.tar.gz
-sudo bash ./install.sh airgap
-```
-
-From the jump box, grab the `admin.conf` so we can run kubectl from this server:
-
-```
-scp dex-airgap-1:admin.conf .
-export KUBECONFIG=$PWD/admin.conf
-kubectl get pods -n kube-system
-```
-
-(this guide assumes kubectl and docker already exist on the `kubectl`-ing workstation, I used `snap install kubectl --classic` in this case)
-
-Should see something like
-
-```
-NAME                                   READY   STATUS    RESTARTS   AGE
-coredns-5644d7b6d9-j6gqs               1/1     Running   0          15m
-coredns-5644d7b6d9-s7q64               1/1     Running   0          15m
-etcd-dex-airgap-2                      1/1     Running   0          14m
-kube-apiserver-dex-airgap-2            1/1     Running   0          14m
-kube-controller-manager-dex-airgap-2   1/1     Running   0          13m
-kube-proxy-l6fw8                       1/1     Running   0          15m
-kube-scheduler-dex-airgap-2            1/1     Running   0          13m
-weave-net-7nf4z                        2/2     Running   0          15m
-```
-
-should also make sure we can `docker image ls` or `sudo docker image ls` from the controlling workstation, in this case our jump box
-
-```
-REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
-```
-
-
-Next, grab our bundle output from the build script and scp it up
-
 ```
 gcloud compute scp kots-v1.16.1.tar.gz dex-airgap-jump:
 ```
@@ -143,25 +70,30 @@ Let's invoke this with our set variables (I'm leaving namespace blank in this ca
 sudo -E ./install.sh "${DOCKER_REGISTRY}" "${NAMESPACE}" "registry-creds" "${DOCKER_USERNAME}" "${DOCKER_PASSWORD}" ""
 ```
 
-next, we need to expose the admin console. If we're running kubectl from a workstation with a browser, we can run 
+
+Once this is finished and the postflight checks have completed, we can get a new password for the admin console:
+
+```text
+./kots reset-password -n "${NAMESPACE}"
+```
+
+Next, we need to expose the admin console. If we're running kubectl from a workstation with a browser, we can run 
 
 ```text
 ./kots admin-console -n "${NAMESPACE}"
 ```
 
-Since I'm running this from a Jump box, I'm going to create a NodePort, but other options like creating an Ingress will let us configure TLS, etc. For an Ingress the service name should be `kotsadm` and it can be deployed out-of-band, either before or after the full install.
+Since I'm running this from a Jump box, I'm going to create a NodePort, but other options like creating an Ingress will let us configure TLS, etc. For an Ingress the service name should be `kotsadm` and it can be deployed out-of-band, either before or after the full install. If you're
 
 ```text
-kubectl -n "${NAMESPACE}" edit svc kotsadm
+$ kubectl -n "${NAMESPACE}" expose deployment kotsadm --name=kotsadm-nodeport --port=3000 --target-port=3000 --type=NodePort
+$ kubectl -n "${NAMESPACE}" get svc kotsadm-nodeport
+NAME               TYPE       CLUSTER-IP    EXTERNAL-IP   PORT(S)          AGE
+kotsadm-nodeport   NodePort   10.96.0.239   <none>        3000:25124/TCP   7s
 ```
 
+And then navigate to <instance ip> : <port>, in this case `http://25.238.234.48:25124`
 
-
-next, we need a password for our kotsadm instance -- let's reset it with
-
-```text
-./kots reset-password -n "${NAMESPACE}"
-```
 
 ### note
 
@@ -170,9 +102,7 @@ in this first test case I've cheated a little bit, because just wanting to get a
 
 ```
 gcloud compute instances add-access-config dex-airgap-1
-export DOCKER_REGISTRY=docker.io
-export DOCKER_NAMESPACE=/dexhorthy
-sudo -E ./install.sh "${DOCKER_REGISTRY}" "${NAMESPACE}" "registry-creds" "${DOCKER_USERNAME}" "${DOCKER_PASSWORD}" "${DOCKER_NAMESPACE}"
+sudo -E ./install.sh docker.io/dexhorthy "${NAMESPACE}" "registry-creds"
 ```
 
 However, I've verified that all of the images are pulled from the specified repo with the registry creds supplied.
@@ -223,3 +153,69 @@ kotsadm-api-5cdbd4d4f4-psxm6   0/1     CrashLoopBackOff   1          2m
 ```
 
 
+### Appendix: creating an airgapped kubernetes cluster in GCP
+
+create a GCP vm with `--no-address`, this will be our airgapped instance
+
+
+```shell
+INSTANCE=dex-airgap-1; gcloud compute instances create $INSTANCE --boot-disk-size=200GB --image-project ubuntu-os-cloud --image-family ubuntu-1804-lts --machine-type n1-standard-4 --no-address
+```
+
+create a jump box with a public IP and SSH it
+
+
+```
+export INSTANCE=dex-airgap-jump
+gcloud compute instances create $INSTANCE --boot-disk-size=200GB --image-project ubuntu-os-cloud --image-family ubuntu-1804-lts --machine-type n1-standard-1
+until gcloud compute ssh --ssh-flag=-A $INSTANCE; do sleep 1; done
+```
+
+
+On the jump box, download a kURL installer bundle without KOTS (details here: https://kurl.sh/47f35bd )
+
+```
+curl -LO https://kurl.sh/bundle/47f35bd.tar.gz
+```
+
+From the jump box, SCP the kURL bundle to the airgapped node, then ssh over to it and run the script
+
+```
+scp 47f35bd.tar.gz dex-airgap-1:
+ssh dex-airgap-1
+tar xvf 47f35bd.tar.gz
+sudo bash ./install.sh airgap
+```
+
+From the jump box, grab the `admin.conf` so we can run kubectl from this server:
+
+```
+scp dex-airgap-1:admin.conf .
+export KUBECONFIG=$PWD/admin.conf
+kubectl get pods -n kube-system
+```
+
+(this guide assumes kubectl and docker already exist on the `kubectl`-ing workstation, I used `snap install kubectl --classic` in this case)
+
+Should see something like
+
+```
+NAME                                   READY   STATUS    RESTARTS   AGE
+coredns-5644d7b6d9-j6gqs               1/1     Running   0          15m
+coredns-5644d7b6d9-s7q64               1/1     Running   0          15m
+etcd-dex-airgap-2                      1/1     Running   0          14m
+kube-apiserver-dex-airgap-2            1/1     Running   0          14m
+kube-controller-manager-dex-airgap-2   1/1     Running   0          13m
+kube-proxy-l6fw8                       1/1     Running   0          15m
+kube-scheduler-dex-airgap-2            1/1     Running   0          13m
+weave-net-7nf4z                        2/2     Running   0          15m
+```
+
+should also make sure we can `docker image ls` or `sudo docker image ls` from the controlling workstation, in this case our jump box
+
+```
+REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+```
+
+
+Next, grab our bundle output from the build script and scp it up
