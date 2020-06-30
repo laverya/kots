@@ -1,11 +1,21 @@
+### Definitions
+
+- Public Workstation: A laptop somewhere, has access to internet, probably in a DMZ somewhere
+- Airgapped Workstation: `dex-airgap-jump` -- has kubectl access to an "airgapped cluster", and network access to a "private registry"
+- Airgapped Cluster: in this case we'll [use a kURL cluster in GCP](#appendix-creating-an-airgapped-kubernetes-cluster-in-gcp), but any k8s cluster works, if you want a real test you should remove any public outbound internet gateways though
+- Private Registry: a separate registry to which images will be pushed during install, and pulled from within the cluster. The cluster should have network access to this registry to pull images.
+- KOTS Bundle: Kots bundle can be [built from source](#appendix-building-the-bundle), or downloaded from s3: https://kots-experimental.s3.amazonaws.com/kots-v1.16.1-airgap-experimental.tar.gz
+
+### Installing
+
+
+From Public Workstation, move kots bundle to Airgapped Workstation
 
 ```
 gcloud compute scp kots-v1.16.1.tar.gz dex-airgap-jump:
 ```
 
-### Installing
-
-This installer expects a namespace and a pull secret to already exist on the target cluster. Let's create them from the jump box
+This installer expects a namespace and a pull secret to already exist on the target cluster. Let's create them from the Airgapped Workstation
 
 ```
 export NAMESPACE=test-deploy
@@ -15,8 +25,6 @@ kubectl create namespace ${NAMESPACE}
 ```
 namespace/test-deploy created
 ```
-
-
 
 we also need to create an image pull secret:
 
@@ -34,14 +42,13 @@ secret/registry-creds created
 Now, let's unpack the bundle and run the script with no arguments to see the usage:
 
 ```
-tar xvf kots-v1.16.1.tar.gz
+tar xvf kots-*.tar.gz
 ./install.sh
 ```
 
 You should see an error and some help text
 
 ```
-
 error: missing registry URL
 
 
@@ -51,15 +58,14 @@ install.sh: load a kotsadm bundle
 
 Positional Arguments
 
-KOTS_REGISTRY_URL -- the url to a registry to use
+KOTS_REGISTRY_URL -- the url to a registry to use, with any path attached
 KOTS_NAMESPACE -- the name of an existing namespace to deploy into
 KOTS_IMAGE_PULL_SECRET_NAME -- the name of an existing image pull secret to use for pulling from the private registry
 
 Optional Arguments:
 
-KOTS_REGISTRY_USERNAME -- optional, username to push images. Leave blank if this workstation already had `docker push access`
-KOTS_REGISTRY_PASSWORD -- optional, password to push images. Leave blank if this workstation already had `docker push access`
-KOTS_REGISTRY_NAMESPACE -- optional, a slash-prefixed registry namespace, e.g. "/app-images"
+KOTS_REGISTRY_USERNAME -- optional, username to push images. Leave blank if this workstation already had docker push access
+KOTS_REGISTRY_PASSWORD -- optional, password to push images. Leave blank if this workstation already had docker push access
 
 ```
 
@@ -152,6 +158,12 @@ NAME                           READY   STATUS             RESTARTS   AGE
 kotsadm-api-5cdbd4d4f4-psxm6   0/1     CrashLoopBackOff   1          2m
 ```
 
+### Appendix: building the bundle
+
+```shell
+make kots
+./hack/airgap_bundle/build_kots_bundle.sh
+```
 
 ### Appendix: creating an airgapped kubernetes cluster in GCP
 
@@ -162,7 +174,7 @@ create a GCP vm with `--no-address`, this will be our airgapped instance
 INSTANCE=dex-airgap-1; gcloud compute instances create $INSTANCE --boot-disk-size=200GB --image-project ubuntu-os-cloud --image-family ubuntu-1804-lts --machine-type n1-standard-4 --no-address
 ```
 
-create a jump box with a public IP and SSH it
+create a Airgapped Workstation with a public IP and SSH it
 
 
 ```
@@ -172,13 +184,13 @@ until gcloud compute ssh --ssh-flag=-A $INSTANCE; do sleep 1; done
 ```
 
 
-On the jump box, download a kURL installer bundle without KOTS (details here: https://kurl.sh/47f35bd )
+On the Airgapped Workstation, download a kURL installer bundle without KOTS (details here: https://kurl.sh/47f35bd )
 
 ```
 curl -LO https://kurl.sh/bundle/47f35bd.tar.gz
 ```
 
-From the jump box, SCP the kURL bundle to the airgapped node, then ssh over to it and run the script
+From the Airgapped Workstation, SCP the kURL bundle to the airgapped node, then ssh over to it and run the script
 
 ```
 scp 47f35bd.tar.gz dex-airgap-1:
@@ -187,7 +199,7 @@ tar xvf 47f35bd.tar.gz
 sudo bash ./install.sh airgap
 ```
 
-From the jump box, grab the `admin.conf` so we can run kubectl from this server:
+From the Airgapped Workstation, grab the `admin.conf` so we can run kubectl from this server:
 
 ```
 scp dex-airgap-1:admin.conf .
@@ -211,7 +223,7 @@ kube-scheduler-dex-airgap-2            1/1     Running   0          13m
 weave-net-7nf4z                        2/2     Running   0          15m
 ```
 
-should also make sure we can `docker image ls` or `sudo docker image ls` from the controlling workstation, in this case our jump box
+should also make sure we can `docker image ls` or `sudo docker image ls` from the controlling workstation, in this case our Airgapped Workstation
 
 ```
 REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE

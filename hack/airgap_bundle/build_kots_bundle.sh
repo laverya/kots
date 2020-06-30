@@ -6,6 +6,7 @@ set -euo pipefail
 
 
 KOTS_VERSION=v1.16.1
+TROUBLESHOOT_VERSION=v0.9.36
 UNAME=linux
 OUTFILE=kots-${KOTS_VERSION}.tar.gz
 
@@ -26,6 +27,7 @@ main() {
   build_admin_console_yaml
   pack_docker_images
   get_kots
+  add_support_bundle_yaml
   build_unpack_script
 
 
@@ -54,6 +56,12 @@ build_admin_console_yaml() {
   set +x
 }
 
+add_support_bundle_yaml() {
+  log getting troubleshoot
+  curl -fsSL https://github.com/replicatedhq/troubleshoot/releases/download/${TROUBLESHOOT_VERSION}/support-bundle_${UNAME}_amd64.tar.gz| tar xv -C dist_bundle/
+  cp support-bundle.yaml ./dist_bundle/troubleshoot/
+}
+
 
 tar_bundle() {
   log tarring bundle
@@ -77,6 +85,7 @@ intro() {
   mkdir -p dist_bundle
   mkdir -p dist_bundle/yaml
   mkdir -p dist_bundle/images
+  mkdir -p dist_bundle/troubleshoot
 }
 
 outro() {
