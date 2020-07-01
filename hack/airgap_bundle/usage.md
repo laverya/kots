@@ -1,8 +1,8 @@
 ### Definitions
 
-- Public Workstation: A laptop somewhere, has access to internet, probably in a DMZ somewhere
-- Airgapped Workstation: `dex-airgap-jump` -- has kubectl access to an "airgapped cluster", and network access to a "private registry"
-- Airgapped Cluster: in this case we'll [use a kURL cluster in GCP](#appendix-creating-an-airgapped-kubernetes-cluster-in-gcp), but any k8s cluster works, if you want a real test you should remove any public outbound internet gateways though
+- Public Workstation: A laptop somewhere, has access to internet, probably in a DMZ somewhere. In this case we'll use a GCP server, `dex-airgap-jump`
+- Airgapped Workstation: `dex-airgap-workstation` -- has kubectl access to an "airgapped cluster", and network access to a "private registry"
+- Airgapped Cluster: in this case we'll [use a kURL cluster in GCP](#appendix-creating-an-airgapped-kubernetes-cluster-in-gcp), but any k8s cluster works, if you want a real test you should remove any public outbound internet gateways though. This example uses a node called `dex-airgap-cluster`
 - Private Registry: a separate registry to which images will be pushed during install, and pulled from within the cluster. The cluster should have network access to this registry to pull images.
 - KOTS Bundle: Kots bundle can be [built from source](#appendix-building-the-bundle), or downloaded from s3: https://kots-experimental.s3.amazonaws.com/kots-v1.16.1-airgap-experimental-alpha2.tar.gz
 
@@ -165,38 +165,97 @@ make kots
 ./hack/airgap_bundle/build_kots_bundle.sh
 ```
 
-### Appendix: creating an airgapped kubernetes cluster in GCP
+### Appendix: End to End GCP example
 
-create a GCP vm with `--no-address`, this will be our airgapped instance
+We'll set up these 3 instances in GCP
 
-
-```shell
-INSTANCE=dex-airgap-1; gcloud compute instances create $INSTANCE --boot-disk-size=200GB --image-project ubuntu-os-cloud --image-family ubuntu-1804-lts --machine-type n1-standard-4 --no-address
 ```
+dex-airgap-jump                                      us-central1-b  n1-standard-1                10.240.0.127  35.193.94.81     RUNNING
+dex-airgap-cluster                                   us-central1-b  n1-standard-1                10.240.0.41                    RUNNING
+dex-airgap-workstation                               us-central1-b  n1-standard-1                10.240.0.26                    RUNNING
+```
+#### jump box
 
-create a Airgapped Workstation with a public IP and SSH it
+Create an jump box with a public IP and SSH it, this will be our jump box w/ internet access and also access to the airgapped environment
 
 
 ```
 export INSTANCE=dex-airgap-jump
 gcloud compute instances create $INSTANCE --boot-disk-size=200GB --image-project ubuntu-os-cloud --image-family ubuntu-1804-lts --machine-type n1-standard-1
-until gcloud compute ssh --ssh-flag=-A $INSTANCE; do sleep 1; done
+```
+
+#### airgapped workstation
+
+create a GCP vm to be our airgapped workstation. We'll give it outbound network access for now to facilitate installing docker, but then we'll disconnect it from the internet.
+
+
+```shell
+export INSTANCE=dex-airgap-workstation; gcloud compute instances create $INSTANCE --boot-disk-size=200GB --image-project ubuntu-os-cloud --image-family ubuntu-1804-lts --machine-type n1-standard-1 
+```
+
+```shell
+gcloud compute ssh dex-airgap-workstation -- 'sudo apt update && sudo apt install docker.io'
+```
+
+Next, remove the machine's public IP. We'll use the kubeconfig from this server later.
+
+```shell
+gcloud compute instances delete-access-config dex-airgap-workstation
+```
+
+verify that internet access was disabled by ssh'ing via the jump box and trying to curl kubernetes.io. We'll forward the agent so that we can ssh the airgapped workstation without moving keys around
+
+```shell
+gcloud compute ssh --ssh-flag=-A dex-airgap-jump -- "ssh dex-airgap-workstation 'curl -v https://google.com'"
+```
+
+this command should hang, and you should see something with `Network is unreachable`:
+
+```text
+  0     0    0     0    0     0      0      0 --:--:--  0:00:02 --:--:--     0*   Trying 2607:f8b0:4001:c05::64...
+* TCP_NODELAY set
+* Immediate connect fail for 2607:f8b0:4001:c05::64: Network is unreachable
+  0     0    0     0    0     0      0      0 --:--:--  0:00:03 --:--:--     0^CConnection to 35.193.94.87 closed.
 ```
 
 
-On the Airgapped Workstation, download a kURL installer bundle without KOTS (details here: https://kurl.sh/47f35bd )
+#### airgapped cluster with registry
+
+create a GCP vm with online internet access, this will be our airgapped cluster, but we'll use a an internet connection to install k8s and get a registry up and running.
+
+```shell
+INSTANCE=dex-airgap-cluster; gcloud compute instances create $INSTANCE --boot-disk-size=200GB --image-project ubuntu-os-cloud --image-family ubuntu-1804-lts --machine-type n1-standard-4 
+```
+
+ssh into the insttance and bootstrap a minimal kubernetes cluster (details here:  https://kurl.sh/1010f0a  )
+
+```shell
+gcloud compute ssh dex-airgap-cluster -- 'curl  https://k8s.kurl.sh/1010f0a  | sudo bash'
+```
+
+deploy a minimal registry and verify its running
+
+```shell
+gcloud compute ssh dex-airgap-cluster -- 'kubectl --kubeconfig ./admin.conf apply -f https://gist.githubusercontent.com/dexhorthy/7a3e6eb119d2d90ff7033a78151c3be2/raw/170dcb45c2fc9e539018bc5a3219c56043680534/plain-registry.yaml'
+```
+
+```shell
+gcloud compute ssh dex-airgap-cluster -- 'kubectl --kubeconfig ./admin.conf get pod,svc -n registry'
+```
+
+Next, remove the machine's public IP. We'll use the kubeconfig from this server later.
+
+```ssh
+gcloud compute instances delete-access-config dex-airgap-cluster
+```
+
+
+#### installation
+
+From the Jump box, download the kots bundle from S3
 
 ```
-curl -LO https://kurl.sh/bundle/47f35bd.tar.gz
-```
 
-From the Airgapped Workstation, SCP the kURL bundle to the airgapped node, then ssh over to it and run the script
-
-```
-scp 47f35bd.tar.gz dex-airgap-1:
-ssh dex-airgap-1
-tar xvf 47f35bd.tar.gz
-sudo bash ./install.sh airgap
 ```
 
 From the Airgapped Workstation, grab the `admin.conf` so we can run kubectl from this server:
