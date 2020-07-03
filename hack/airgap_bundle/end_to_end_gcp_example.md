@@ -118,7 +118,7 @@ you may need to also add an `insecure-registy` entry to allow pushing/pulling vi
 
 Next, remove the machine's public IP. We'll use the kubeconfig from this server later.
 
-```ssh
+```shell script
 gcloud compute instances delete-access-config dex-airgap-cluster
 ```
 
@@ -168,13 +168,21 @@ Before proceeding, re-run the following command until docker has come back up:
  gcloud compute ssh --ssh-flag=-A dex-airgap-jump -- "ssh dex-airgap-workstation -- docker image ls"
 ```
 
+and you see
+
+```shell script
+REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+```
+
+
+
 We can verify connectivity with a login + pull of the image we previously pushed
 
 ```shell script
  gcloud compute ssh --ssh-flag=-A dex-airgap-jump -- "ssh dex-airgap-workstation -- docker login ${CLUSTER_PRIVATE_IP}:32000 --username kots --password kots"
 
 # note we've hard-coded the IP here, not using the env var
- gcloud compute ssh --ssh-flag=-A dex-airgap-jump -- "ssh dex-airgap-workstation -- docker pull 10.240.0.88:32000/busybox:latest"
+ gcloud compute ssh --ssh-flag=-A dex-airgap-jump -- "ssh dex-airgap-workstation -- docker pull ${CLUSTER_PRIVATE_IP}:32000/busybox:latest"
 ```
 
 
@@ -182,9 +190,13 @@ should see something like
 
 ```text
 latest: Pulling from busybox
+91f30d776fb2: Pulling fs layer
+91f30d776fb2: Verifying Checksum
+91f30d776fb2: Download complete
+91f30d776fb2: Pull complete
 Digest: sha256:2131f09e4044327fd101ca1fd4043e6f3ad921ae7ee901e9142e6e36b354a907
-Status: Image is up to date for 10.240.0.88:32000/busybox:latest
-10.240.0.88:32000/busybox:latest
+Status: Downloaded newer image for 10.240.0.100:32000/busybox:latest
+10.240.0.100:32000/busybox:latest
 ```
 
 ###### Kubectl
@@ -218,6 +230,12 @@ kube-scheduler-dex-airgap-2            1/1     Running   0          13m
 weave-net-7nf4z                        2/2     Running   0          15m
 ```
 
+Now -- log out of the airgapped instance
+
+```shell script
+exit
+```
+
 ###### Namespace and Secret
 
 One of the prerequisites for the installer is a namespace with an existing pull secret for the install, let's create those now:
@@ -237,8 +255,6 @@ namespace/test-deploy created
 Next, let's make a secret for our registry
 
 ```shell script
-
-export NAMESPACE=test-deploy
 gcloud compute ssh --ssh-flag=-A dex-airgap-jump -- "ssh -A dex-airgap-workstation -- /snap/bin/kubectl --kubeconfig=admin.conf -n $NAMESPACE create secret  docker-registry registry-creds --docker-server=${CLUSTER_PRIVATE_IP}:32000 --docker-username=kots --docker-password=kots --docker-email=a@b.c"
 ```
 
