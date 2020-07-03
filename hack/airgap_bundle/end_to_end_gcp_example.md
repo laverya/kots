@@ -269,15 +269,15 @@ secret/registry-creds
 From the Jump box, download the kots bundle from S3 and scp it to the airgapped workstation. In a "full airgap" or "sneakernet" scenario, replace `scp` with whatever process is appropriate for moving assets into the airgapped cluster.
 
 ```shell script
-gcloud compute ssh --ssh-flag=-A dex-airgap-jump -- 'wget https://kots-experimental.s3.amazonaws.com/kots-v1.16.1-airgap-experimental-alpha2.tar.gz'
-gcloud compute ssh --ssh-flag=-A dex-airgap-jump -- 'scp kots-v1.16.1-airgap-experimental-alpha2.tar.gz dex-airgap-workstation:'
+gcloud compute ssh --ssh-flag=-A dex-airgap-jump -- 'wget https://kots-experimental.s3.amazonaws.com/kots-v1.16.1-airgap-experimental-alpha3.tar.gz'
+gcloud compute ssh --ssh-flag=-A dex-airgap-jump -- 'scp kots-v1.16.1-airgap-experimental-alpha3.tar.gz dex-airgap-workstation:'
 ```
 
 Now, we're ready to untar the bundle and run the install script:
 
 
 ```shell script
-gcloud compute ssh --ssh-flag=-A dex-airgap-jump -- 'ssh dex-airgap-workstation tar xvf kots-v1.16.1-airgap-experimental-alpha2.tar.gz'
+gcloud compute ssh --ssh-flag=-A dex-airgap-jump -- 'ssh dex-airgap-workstation tar xvf kots-v1.16.1-airgap-experimental-alpha3.tar.gz'
 ```
 
 
