@@ -36,7 +36,7 @@ The airgap bundle will be pushed to the local registry, and read from the Admin 
 
 The end result here will make the following completely automate an installation where a cluster does not have access to the internet:
 
-```shell
+```shell script
 kots pull \
   --license-file ./license.yaml \
   --config-values ./config.yaml \ # optional, needed to automate config, if there is app config

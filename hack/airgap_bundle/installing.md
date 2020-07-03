@@ -73,26 +73,26 @@ KOTS_REGISTRY_PASSWORD -- optional, password to push images. Leave blank if this
 Let's invoke this with our set variables (I'm leaving namespace blank in this case). Since my machine is already configured to push to the registry via `docker login`,
 I'll omit the docker credentials.
 
-```shell
+```shell script
 ./install.sh "${DOCKER_REGISTRY}" "${NAMESPACE}" "registry-creds" 
 ```
 
 If you need to pass credentials you can add them with two additional arguments
 
-```shell
+```shell script
 ./install.sh "${DOCKER_REGISTRY}" "${NAMESPACE}" "registry-creds" "${DOCKER_USERNAME}" "${DOCKER_PASSWORD}"
 ```
 
 
 Once this is finished and the postflight checks have completed, we can get a new password for the admin console:
 
-```shell
+```shell script
 ./kots reset-password -n "${NAMESPACE}"
 ```
 
 Next, we need to expose the admin console. If we're running kubectl from a workstation with a browser, we can run 
 
-```shell
+```shell script
 ./kots admin-console -n "${NAMESPACE}"
 ```
 
@@ -108,4 +108,7 @@ kotsadm-nodeport   NodePort   10.96.0.239   <none>        3000:25124/TCP   7s
 And then navigate to <instance ip> : <port>, in this case `http://25.238.234.48:25124`
 
 **Note**: in this case we've cheated and given the "airgapped cluster" a public IP so we can reach the kotsadm console, but you can check out the [end to end gcp example](./end_to_end_gcp_example.md) for an example of using an airgapped registry and an ssh tunnel for a "full airgap" example where instances don't have internet gateways. If your airgapped cluster has access via a VPN, that's an option as well.
+
+
+
 
