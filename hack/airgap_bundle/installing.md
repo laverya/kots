@@ -69,6 +69,18 @@ KOTS_REGISTRY_PASSWORD -- optional, password to push images. Leave blank if this
 
 ```
 
+Go to the yaml directory and open the file kotsadm.yaml for editing.
+
+Search for KOTSADM_API_ENDPOINT and you should see something like:
+```
+- name: KOTSADM_API_ENDPOINT
+  value: http://kotsadm-api-node.appname.svc.cluster.local:3000
+```
+You need to update the value to replace `appname` with the namespace the app will be deployed to. For instance, if you are deploying to the `test-app` namespace, this would be the updated value:
+```
+- name: KOTSADM_API_ENDPOINT
+  value: http://kotsadm-api-node.test-app.svc.cluster.local:3000
+```
 
 Let's invoke this with our set variables (I'm leaving namespace blank in this case). Since my machine is already configured to push to the registry via `docker login`,
 I'll omit the docker credentials.
@@ -82,15 +94,6 @@ If you need to pass credentials you can add them with two additional arguments
 ```shell script
 ./install.sh "${DOCKER_REGISTRY}" "${NAMESPACE}" "registry-creds" "${DOCKER_USERNAME}" "${DOCKER_PASSWORD}"
 ```
-
-After install.sh completes, we need to validate that `KOTSADM_API_ENDPOINT` in the `kotsadm-operator` deployment is set to `"http://kotsadm-api-node.appname.svc.cluster.local:3000"`, where `appname` is the name of the app being installed. To do this, run:
-
-```shell script
-kubectl edit deployment kotsadm-operator
-```
-
-and ensure that the environment variable is set properly.
-
 
 Once this is finished and the postflight checks have completed, we can get a new password for the admin console:
 
