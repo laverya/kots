@@ -4,7 +4,7 @@
 - Airgapped Workstation: `dex-airgap-workstation` -- has kubectl access to an "airgapped cluster", and network access to a "private registry"
 - Airgapped Cluster: in this case we'll [use a kURL cluster in GCP](#appendix-creating-an-airgapped-kubernetes-cluster-in-gcp), but any k8s cluster works, if you want a real test you should remove any public outbound internet gateways though. This example uses a node called `dex-airgap-cluster`
 - Private Registry: a separate registry to which images will be pushed during install, and pulled from within the cluster. The cluster should have network access to this registry to pull images.
-- KOTS Bundle: Kots bundle can be [built from source](#appendix-building-the-bundle), or downloaded from s3: https://kots-experimental.s3.amazonaws.com/kots-v1.16.1-airgap-experimental-alpha2.tar.gz
+- KOTS Bundle: Kots bundle can be [built from source](#appendix-building-the-bundle), or downloaded from s3: https://kots-experimental.s3.amazonaws.com/kots-v1.16.1-airgap-experimental-alpha2.1.tar.gz
 
 ### Installing
 
@@ -82,6 +82,14 @@ If you need to pass credentials you can add them with two additional arguments
 ```shell script
 ./install.sh "${DOCKER_REGISTRY}" "${NAMESPACE}" "registry-creds" "${DOCKER_USERNAME}" "${DOCKER_PASSWORD}"
 ```
+
+After install.sh completes, we need to validate that `KOTSADM_API_ENDPOINT` in the `kotsadm-operator` deployment is set to `"http://kotsadm-api-node.appname.svc.cluster.local:3000"`, where `appname` is the name of the app being installed. To do this, run:
+
+```shell script
+kubectl edit deployment kotsadm-operator
+```
+
+and ensure that the environment variable is set properly.
 
 
 Once this is finished and the postflight checks have completed, we can get a new password for the admin console:
